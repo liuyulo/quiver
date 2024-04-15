@@ -398,7 +398,7 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
         }
 
         for (let level = 1; level < quiver.cells.length; level++) {
-            // WIP: k-cells with k >= 2 is currently unsupported
+            // TODO k-cells with k >= 2 is currently unsupported
             // See: https://github.com/Jollywatt/typst-fletcher/issues/16
             if (level > 1) {
                 break;
