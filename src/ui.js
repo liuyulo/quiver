@@ -4597,64 +4597,19 @@ class Panel {
                     }
 
                     tip = new DOM.Element("span", { class: "tip hidden" });
-
-                    // Create message regarding, and linking to, `quiver.sty`.
-                    const update_package_previous_download = () => {
-                        window.localStorage.setItem(
-                            "package-previous-download",
-                            CONSTANTS.PACKAGE_VERSION,
-                        );
-                        const update = tip.query_selector(".update");
-                        if (update !== null) {
-                            update.remove();
-                        }
-                    };
-
                     tip.add("Remember to include ")
-                        .add(new DOM.Code("\\usepackage{quiver}"))
-                        .add(" in your LaTeX preamble. You can install the package using ")
-                        .add(new DOM.Link("https://tug.org/texlive/", "TeX Live 2023", true));
-                    tip.add(", or ")
-                        .add(
-                            // We would like to simply use `quiver.sty` here, but,
-                            // unfortunately, GitHub pages does not permit overriding the
-                            // `content-type` of a resource, and by default `.sty` files are
-                            // treated as `application/octet-stream`.
-                            new DOM.Element("a", {
-                                href: "https://raw.githubusercontent.com/varkor/quiver/master/package/quiver.sty",
-                                target: "_blank",
-                            }).add("open ")
-                                .add(new DOM.Element("code").add("quiver.sty"))
-                                .add(" in a new tab")
-                            .listen("click", update_package_previous_download)
-                        )
-                        .add(" to copy-and-paste.")
+                        .add(new DOM.Code(`#import "@preview/fletcher:0.4.3": diagram, node, edge`))
+                        .add(" in your Typst file")
                         .add_to(port_pane);
 
                     const centre_checkbox = new DOM.Element("input", {
                         type: "checkbox",
                         "data-setting": "export.centre_diagram",
                     });
-                    const ampersand_replacement = new DOM.Element("input", {
-                        type: "checkbox",
-                        "data-setting": "export.ampersand_replacement",
-                    });
-                    const cramped = new DOM.Element("input", {
-                        type: "checkbox",
-                        "data-setting": "export.cramped",
-                    });
                     latex_options = new DOM.Div({ class: "options latex hidden" })
                         .add(new DOM.Element("label")
                             .add(centre_checkbox)
                             .add("Centre diagram")
-                        )
-                        .add(new DOM.Element("label")
-                            .add(ampersand_replacement)
-                            .add("Ampersand replacement")
-                        )
-                        .add(new DOM.Element("label")
-                            .add(cramped)
-                            .add("Cramped")
                         )
                         .add(new DOM.Div({ class: "linked-sliders" })
                             .add(sep_sliders.column.label)
@@ -4681,8 +4636,6 @@ class Panel {
 
                     const checkboxes = [
                         [centre_checkbox, "tikz-cd", "c"],
-                        [ampersand_replacement, "tikz-cd", "a"],
-                        [cramped, "tikz-cd", "r"],
                         [fixed_size_checkbox, "html", "f"],
                     ];
                     const shortcuts = [];
@@ -5140,11 +5093,6 @@ class Panel {
                         .add(new DOM.Element("b").add("quiver"))
                         .add(" ↴");
                 }
-                if (kind === "export") {
-                    note.add("If you need to edit this diagram, you can open it again in ")
-                        .add(new DOM.Element("b").add("quiver"))
-                        .add(" using the URL below ↴");
-                }
 
                 // Update the import textarea/button.
                 textarea.clear();
@@ -5206,8 +5154,8 @@ class Panel {
         // The export button.
         const export_to_latex = Panel.create_button_with_shortcut(
             ui,
-            "LaTeX",
-            "LaTeX",
+            "Typst",
+            "Typst",
             { key: "E", modifier: true, context: Shortcuts.SHORTCUT_PRIORITY.Always },
             () => display_port_pane("export", "tikz-cd"),
         );

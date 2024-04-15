@@ -230,14 +230,14 @@ class Quiver {
 /// Various methods of exporting a quiver.
 class QuiverExport {
     /// A method to export a quiver as a string.
-    export() {}
+    export() { }
 }
 
 /// Various methods of exporting and importing a quiver.
 class QuiverImportExport extends QuiverExport {
     /// A method to import a quiver as a string. `import(export(quiver))` should be the
     /// identity function. Currently `import` takes a `UI` into which to import directly.
-    import() {}
+    import() { }
 
     begin_import(ui) {
         // We don't want to relayout every time we add a new cell: instead, we should perform
@@ -286,595 +286,182 @@ QuiverExport.CONSTANTS = {
     // reasonable results for various diagrams I tested. It would be nice to eventually
     // correct this by using proportional lengths, but that requires a custom TikZ style
     // I do not currently possess the skills to create.
-    TIKZ_HORIZONTAL_MULTIPLIER: 1/4,
-    TIKZ_VERTICAL_MULTIPLIER: 1/6,
+    TIKZ_HORIZONTAL_MULTIPLIER: 1 / 4,
+    TIKZ_VERTICAL_MULTIPLIER: 1 / 6,
 };
 
 QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
-    export(quiver, settings, options, definitions) {
-        let output = "";
+    wrap_boilerplate = (output, q, s, o, d) => {
+        let diagram = output.map(line => `  ${line},`).join("\n").trim();
+        // if nonempty diagram
+        if (diagram.length) diagram = `\n  ${diagram}\n`;
 
-        // Wrap tikz-cd code with `\begin{tikzcd} ... \end{tikzcd}`.
-        const wrap_boilerplate = (output) => {
-            const diagram_options = [];
-            // Ampersand replacement.
-            if (settings.get("export.ampersand_replacement")) {
-                diagram_options.push("ampersand replacement=\\&");
-            }
-            // Cramped.
-            if (settings.get("export.cramped")) {
-                diagram_options.push("cramped");
-            }
-            // Column and row separation.
-            const sep = {
-                column: `${options.sep.column.toFixed(2)}em`,
-                row: `${options.sep.row.toFixed(2)}em`,
-            };
-            const seps = {
-                "0.45em": "tiny",
-                "0.90em": "small",
-                "1.35em": "scriptsize",
-                "1.80em": "normal",
-                "2.70em": "large",
-                "3.60em": "huge",
-            };
-            for (const axis of ["column", "row"]) {
-                if (seps.hasOwnProperty(sep[axis])) {
-                    sep[axis] = seps[sep[axis]];
+        diagram = `#diagram(${diagram})`;
+        if (s.get("export.centre_diagram")) {
+            diagram = `$ ${diagram} $`;
+        }
+        const hash = QuiverImportExport.base64.export(q, s, o, d).data;
+        if (hash === "") return diagram;
+        return `// #q=${hash}\n${diagram}`;
+    };
+
+    // arrow building with options
+    arrow(o) {
+        // refer to the manual for the meanings of the strings M1, M2, M3 and L
+        let arrow_M1 = "";
+        let arrow_M2 = "";
+        let arrow_M3 = "";
+        let arrow_L = "";
+
+        switch (o.style.body.name) {
+            case "barred":
+                arrow_M2 = "|";
+            // intentional fallthrough
+            case "cell":
+                if (o.level == 1) {
+                    arrow_L = "-";
+                } else if (o.level == 2) {
+                    arrow_L = "=";
+                } else if (o.level >= 3) {
+                    // typst-fletcher only supports up to triple arrows
+                    arrow_L = "==";
                 }
-            }
-            if (sep.column === sep.row && sep.column !== "normal") {
-                diagram_options.push(`sep=${sep.column}`);
-            } else {
-                for (const axis of ["column", "row"]) {
-                    if (sep[axis] !== "normal") {
-                        diagram_options.push(`${axis} sep=${sep[axis]}`);
-                    }
-                }
-            }
-            // `tikzcd` environment.
-            let tikzcd = `\\begin{tikzcd}${
-                diagram_options.length > 0 ? `[${diagram_options.join(",")}]` : ""
-            }\n${
-                output.length > 0 ? `${
-                    output.split("\n").map(line => `\t${line}`).join("\n")
-                }\n` : ""
-            }\\end{tikzcd}`;
-            if (settings.get("export.centre_diagram")) {
-                tikzcd = `\\[${tikzcd}\\]`;
-            }
-            // URL.
-            return `% ${
-                QuiverImportExport.base64.export(quiver, settings, options, definitions).data
-            }\n${tikzcd}`;
-        };
+                break;
+            case "squiggly":
+            // not supported, falling back to --
+            case "dashed":
+                arrow_L = "--";
+                break;
+            case "dotted":
+                arrow_L = "..";
+                break;
+            default:
+                // typst-fletcher does not support arrows without body
+                arrow_L = "-";
+                break;
+        }
+
+        switch (o.style.tail.name) {
+            case "maps to":
+                arrow_M1 = "|";
+                break;
+            case "mono":
+                arrow_M1 = ">";
+                break;
+            case "hook":
+                arrow_M1 = `hook${o.style.tail.side == "top" ? "" : "'"}`;
+                break;
+            case "arrowhead":
+                arrow_M1 = "<";
+                break;
+        }
+
+        switch (o.style.head.name) {
+            case "epi":
+                arrow_M3 = ">>";
+                break;
+            case "harpoon":
+                arrow_M3 = `hook${o.style.tail.side == "top" ? "" : "'"}`;
+                break;
+            case "arrowhead":
+                arrow_M3 = ">";
+                break;
+        }
+
+        const arrow = arrow_M2 === "" ?
+            `${arrow_M1}${arrow_L}${arrow_M3}` :
+            `${arrow_M1}${arrow_L}${arrow_M2}${arrow_L}${arrow_M3}`;
+        return `"${arrow}"`;
+    }
+
+    // quiver, settings, options, definitions
+    export(quiver, s, o, d) {
+        let output = [];
+        const metadata = { tikz_incompatibilities: new Set(), dependencies: new Map() }
 
         // Early exit for empty quivers.
-        if (quiver.is_empty()) {
+        if (quiver.is_empty())
             return {
-                data: wrap_boilerplate(output),
-                metadata: { tikz_incompatibilities: new Set(), dependencies: new Map() },
+                data: this.wrap_boilerplate(output, quiver, s, o, d),
+                metadata,
             };
+        // label to string (with color)
+        const ltos = (label, c) => {
+            if (label === "") return '" "';
+            label = `$${label}$`;
+            if (c.is_not_black()) return `text(fill: ${c.typst()}, ${label})`;
+            return label;
         }
 
-        // Which symbol to use as a column separator. Usually ampersand (`&`), but sometimes it is
-        // necessary to escape the ampersand when using TikZ diagrams in a nested context.
-        const ampersand = settings.get("export.ampersand_replacement") ? "\\&" : "&";
-
-        // If a label is particularly simple (containing no special symbols), we do not need to
-        // surround it in curly brackets. This is preferable, because simpler output is more
-        // readable. In general, we need to use curly brackets to avoid LaTeX errors. For instance,
-        // `[a]` is invalid: we must use `{[a]}` instead.
-        const simple_label = /^[a-zA-Z0-9\\]+$/;
-
-        // Adapt a label to be appropriate for TikZ output, by surrounding it in curly brackets when
-        // necessary, and using `\shortstack` for newlines.
-        const format_label = (label) => {
-            return !simple_label.test(label) ? `{${label}}` : label;
-        };
-
-        // We handle the export in two stages: vertices and edges. These are fundamentally handled
-        // differently in tikz-cd, so it makes sense to separate them in this way. We have a bit of
-        // flexibility in the format in which we output (e.g. edges relative to nodes, or with
-        // absolute positions).
-        // We choose to lay out the tikz-cd code as follows:
-        //    (vertices)
-        //    X & X & X \\
-        //    X & X & X \\
-        //    X & X & X
-        //    (1-cells)
-        //    (2-cells)
-        //    ...
-
-        // Output the vertices.
-        // Note that currently vertices may not share the same position,
-        // as in that case they will be overwritten.
-        let offset = new Position(Infinity, Infinity);
-        // Construct a grid for the vertices.
-        const rows = new Map();
-        for (const vertex of quiver.cells[0]) {
-            if (!rows.has(vertex.position.y)) {
-                rows.set(vertex.position.y, new Map());
-            }
-            rows.get(vertex.position.y).set(vertex.position.x, vertex);
-            offset = offset.min(vertex.position);
-        }
-        // Iterate through the rows and columns in order, outputting the tikz-cd code.
-        const prev = new Position(offset.x, offset.y);
-        for (const [y, row] of Array.from(rows).sort(([y1,], [y2,]) => y1 - y2)) {
-            if (y - prev.y > 0) {
-                output += ` ${"\\\\\n".repeat(y - prev.y)}`;
-            }
-            // This variable is really unnecessary, but it allows us to remove
-            // a leading space on a line, which makes things prettier.
-            let first_in_row = true;
-            for (const [x, vertex] of Array.from(row).sort(([x1,], [x2,]) => x1 - x2)) {
-                if (x - prev.x > 0) {
-                    output += `${!first_in_row ? " " : ""}${ampersand.repeat(x - prev.x)} `;
-                }
-                if (vertex.label !== "" && vertex.label_colour.is_not_black()) {
-                    output += `\\textcolor${
-                        vertex.label_colour.latex(definitions.colours, true)}{${vertex.label}}`;
-                } else {
-                    output += format_label(vertex.label);
-                }
-                prev.x = x;
-                first_in_row = false;
-            }
-            prev.x = offset.x;
-            prev.y = y;
+        for (const { label, label_colour, position: { x, y } } of quiver.cells[0]) {
+            output.push(`node((${x}, ${y}), ${ltos(label, label_colour)})`);
         }
 
-        // Referencing cells is slightly complicated by the fact that we can't give vertices
-        // names in tikz-cd, so we have to refer to them by position instead. That means 1-cells
-        // have to be handled differently to k-cells for k > 1.
-        // A map of unique identifiers for cells.
-        const names = new Map();
-        let index = 0;
-        const cell_reference = (cell, phantom) => {
-            if (cell.is_vertex()) {
-                // Note that tikz-cd 1-indexes its cells.
-                return `${cell.position.y - offset.y + 1}-${cell.position.x - offset.x + 1}`;
-            } else {
-                return `${names.get(cell)}${phantom ? "p" : ""}`;
+        for (let level = 1; level < quiver.cells.length; level++) {
+            // WIP: k-cells with k >= 2 is currently unsupported
+            // See: https://github.com/Jollywatt/typst-fletcher/issues/16
+            if (level > 1) {
+                break;
             }
-        };
-
-        // quiver can draw more complex arrows than tikz-cd, and in some cases we are currently
-        // unable to export faithfully to tikz-cd. In this case, we issue a warning to alert the
-        // user that their diagram is not expected to match the quiver representation.
-        const tikz_incompatibilities = new Set();
-        // In some cases, we can resolve this issue by relying on another package. However, these
-        // packages may not yet be standard in LaTeX installations, so we warn the issue that they
-        // are required.
-        const dependencies = new Map();
-        const add_dependency = (dependency, reason) => {
-            if (!dependencies.has(dependency)) {
-                dependencies.set(dependency, new Set());
-            }
-            dependencies.get(dependency).add(reason);
-        };
-
-        // Output the edges.
-        for (let level = 1; level < quiver.cells.length; ++level) {
-            if (quiver.cells[level].size > 0) {
-                output += "\n";
-            }
-
-            // Sort the edges so that we iterate through based on source (top-to-bottom,
-            // left-to-right), and then target.
-            const edges = [...quiver.cells[level]];
-            const compare_cell_position = (a, b) => {
-                if (a.position.y < b.position.y) {
-                    return -1;
-                }
-                if (a.position.y > b.position.y) {
-                    return 1;
-                }
-                if (a.position.x < b.position.x) {
-                    return -1;
-                }
-                if (a.position.x > b.position.x) {
-                    return 1;
-                }
-                return 0;
-            }
-            edges.sort((a, b) => {
-                return compare_cell_position(a.source, b.source)
-                    || compare_cell_position(a.target, b.target);
-            });
-
-            for (const edge of edges) {
-                // The parameters pertinent to the entire arrow. TikZ is quite flexible in
-                // where it allows various parameters to appear. E.g. `text` can appear in the
-                // general parameter list, or as a parameter specific to a label. For specific
-                // parameters, we always attach it to the label to which it is relevant. This helps
-                // us avoid accidentally affecting the properties of other labels.
-                const parameters = {};
-                // The parameters that are inherited by phantom edges (i.e. those relating to
-                // positioning, but not styling).
-                const phantom_parameters = {};
-                // The primary label (i.e. the one the user edits directly).
-                const label = { content: edge.label };
-                // A label used for the edge style, e.g. a bar, corner, or adjunction symbol.
-                const decoration = {};
-                // All the labels for this edge, including the primary label, a placeholder label if
-                // any edges are attached to this one, and labels for non-arrow edge styles, or the
-                // bar on a barred arrow.
-                const labels = [label];
-                // We can skip applying various properties if the edge is invisible.
-                const edge_is_empty = edge.options.style.name === "arrow"
-                    && edge.options.style.head.name === "none"
-                    && edge.options.style.body.name === "none"
-                    && edge.options.style.tail.name === "none";
-
-                const current_index = index;
-                // We only need to give edges names if they're depended on by another edge. Note
-                // that we provide a name even for edges that only have non-edge-aligned edges. This
-                // is not useful for the TikZ output, but is useful if the TikZ code is later parsed
-                // by quiver, as it allows quiver to match phantom edges to the real edges.
-                if (quiver.dependencies_of(edge).size > 0) {
-                    names.set(edge, current_index);
-                    // We create a placeholder label that is used as a source/target for other
-                    // edges. It's more convenient to create a placeholder label so that we have
-                    // fine-grained control of positioning independent of the actual label
-                    // position.
-                    labels.unshift({
-                        name: current_index,
-                        // The placeholder labels should have zero size. The following
-                        // properties heuristically gave the best results for this purpose.
-                        anchor: "center",
-                        "inner sep": 0,
-                    });
-                    index++;
-                }
-
-                switch (edge.options.label_alignment) {
-                    case "centre":
-                        // Centring is done by using the `description` style.
-                        label.description = "";
-                        break;
-                    case "over":
-                        // Centring without clearing is done by using the `marking` style.
-                        label.marking = "";
-                        // If the `allow upside down` option is not specified, TikZ will flip labels
-                        // when the rotation is too high.
-                        label["allow upside down"] = "";
-                        break;
-                    case "right":
-                        // By default, the label is drawn on the left side of the edge; `swap`
-                        // flips the side.
-                        label.swap = "";
-                        break;
-                }
-
-                if (edge.options.label_position !== 50) {
-                    label.pos = edge.options.label_position / 100;
-                }
-
-                if (edge.options.offset !== 0) {
-                    const side = edge.options.offset > 0 ? "right" : "left";
-                    const abs_offset = Math.abs(edge.options.offset);
-                    parameters[`shift ${side}`] = abs_offset !== 1 ? abs_offset : "";
-                    phantom_parameters[`shift ${side}`] = parameters[`shift ${side}`];
-                }
-
-                // This is the simplest case, because we can set a single attribute for both the
-                // label and edge colours (which also affects the other labels, e.g. those for
-                // pullbacks and adjunctions).
-                if (edge.options.colour.eq(edge.label_colour) && edge.label_colour.is_not_black()) {
-                    parameters.color = edge.label_colour.latex(definitions.colours);
-                } else {
-                    // The edge colour. An arrow is drawn only for the `arrow` style, so we don't
-                    // need to emit `draw` in another case.
-                    if (
-                        !edge_is_empty && edge.options.colour.is_not_black()
-                        && edge.options.style.name === "arrow"
-                    ) {
-                        parameters.draw = edge.options.colour.latex(definitions.colours);
-                    }
-                    // The label colour.
-                    if (edge.label_colour.is_not_black()) {
-                        label.text = edge.label_colour.latex(definitions.colours);
-                    }
-                    // The colour for non-`arrow` edges, which is drawn using a label.
-                    if (edge.options.style.name !== "arrow" && edge.options.colour.is_not_black()) {
-                        decoration.text = edge.options.colour.latex(definitions.colours);
-                    }
-                }
-
-                // This is the calculation for the radius of an ellipse, combining the two
-                // multipliers based on the angle of the edge.
-                const multiplier = QuiverExport.CONSTANTS.TIKZ_HORIZONTAL_MULTIPLIER
-                    * QuiverExport.CONSTANTS.TIKZ_VERTICAL_MULTIPLIER
-                    / ((QuiverExport.CONSTANTS.TIKZ_HORIZONTAL_MULTIPLIER ** 2
-                            * Math.sin(edge.angle()) ** 2
-                    + QuiverExport.CONSTANTS.TIKZ_VERTICAL_MULTIPLIER ** 2
-                        * Math.cos(edge.angle()) ** 2) ** 0.5);
-
-                if (edge.options.curve !== 0) {
-                    parameters.curve = `{height=${
-                        // Using a fixed multiplier for curves of any angle tends to work better
-                        // in the examples I tested.
-                        edge.options.curve * CONSTANTS.CURVE_HEIGHT
-                            * QuiverExport.CONSTANTS.TIKZ_HORIZONTAL_MULTIPLIER
-                    }pt}`;
-                    phantom_parameters.curve = parameters.curve;
-                }
-
-                // Shortened edges. This may only be set for the `arrow` style.
-                const tail_is_empty = edge.options.style.name === "arrow"
-                    && edge.options.style.body.name === "none"
-                    && edge.options.style.tail.name === "none";
-                if (!tail_is_empty && edge.options.shorten.source !== 0) {
-                    const shorten = Math.round(edge.arrow.style.shorten.tail * multiplier);
-                    parameters["shorten <"] = `${shorten}pt`;
-                    if (edge.options.curve !== 0) {
-                        // It should be possible to do this using a custom style, but for now we
-                        // simply warn the user that the result will not look quite as good as it
-                        // does in quiver.
-                        tikz_incompatibilities.add("shortened curved arrows");
-                    }
-                    if (edge.target === edge.source) {
-                        tikz_incompatibilities.add("shortened loops");
-                    }
-                }
-                const head_is_empty = edge.options.style.name === "arrow"
-                    && edge.options.style.head.name === "none"
-                    && edge.options.style.body.name === "none";
-                if (!head_is_empty && edge.options.shorten.target !== 0) {
-                    const shorten = Math.round(edge.arrow.style.shorten.head * multiplier);
-                    parameters["shorten >"] = `${shorten}pt`;
-                    if (edge.options.curve !== 0) {
-                        tikz_incompatibilities.add("shortened curved arrows");
-                    }
-                    if (edge.target === edge.source) {
-                        tikz_incompatibilities.add("shortened loops");
-                    }
-                }
-
-                // Edge styles.
-                switch (edge.options.style.name) {
-                    case "arrow":
-                        // tikz-cd only has supported for 1-cells and 2-cells...
-                        if (edge.options.level === 2 && !edge_is_empty) {
-                            parameters.Rightarrow = "";
-                        } else if (edge.options.level > 2) {
-                            // So for n-cells for n > 2, we make use of tikz-nfold.
-                            parameters.Rightarrow = "";
-                            parameters["scaling nfold"] = edge.options.level;
-                            add_dependency("tikz-nfold", "triple arrows or higher");
-                        }
-
-                        // We special-case arrows with no head, body, nor tail. This is because the
-                        // `no body` style has some graphical issues in some versions of TikZ, so
-                        // we prefer to avoid this style if possible.
-                        if (edge_is_empty) {
-                            parameters.draw = "none";
+            for (const edge of quiver.cells[level]) {
+                const { source, target, options: o, label, label_colour } = edge;
+                console.assert(source.is_vertex() && target.is_vertex());
+                const params = {};
+                const l = ltos(label, label_colour);
+                if (label !== "") {
+                    switch (o.label_alignment) {
+                        case "centre":
+                            params["label-side"] = "center";
+                            params["label-fill"] = "true";
                             break;
-                        }
+                        case "over":
+                            params["label-side"] = "center";
+                            params["label-fill"] = "false";
+                            break;
+                        case "right":
+                            params["label-side"] = "right";
+                            break;
+                    }
 
-                        // Body styles.
-                        switch (edge.options.style.body.name) {
-                            case "cell":
-                                // This is the default in tikz-cd.
-                                break;
+                    if (o.label_position !== 50) {
+                        params["label-pos"] = o.label_position / 100;
+                    }
+                }
 
-                            case "dashed":
-                                parameters.dashed = "";
-                                break;
+                if (o.offset !== 0) {
+                    params["shift"] = `${o.offset}pt`;
+                }
 
-                            case "dotted":
-                                parameters.dotted = "";
-                                break;
+                if (o.colour.is_not_black()) {
+                    params["stroke"] = o.colour.typst();
+                }
 
-                            case "squiggly":
-                                parameters.squiggly = "";
-                                break;
+                if (o.curve !== 0) {
+                    // temporary
+                    params["bend"] = `${-15 * o.curve}deg`;
+                }
 
-                            case "barred":
-                                labels.push(decoration);
-                                decoration.content = "\\shortmid";
-                                decoration.marking = "";
-                                if (edge.options.colour.is_not_black()) {
-                                    decoration.text
-                                        = edge.options.colour.latex(definitions.colours);
-                                }
-                                break;
-
-                            case "none":
-                                parameters["no body"] = "";
-                                break;
-                        }
-
-                        // Tail styles.
-                        switch (edge.options.style.tail.name) {
-                            case "maps to":
-                                parameters["maps to"] = "";
-                                break;
-
-                            case "mono":
-                                switch (edge.options.level) {
-                                    case 1:
-                                        parameters.tail = "";
-                                        break;
-                                    case 2:
-                                        parameters["2tail"] = "";
-                                        break;
-                                    default:
-                                        // We've already reported an issue with triple arrows and
-                                        // higher in tikz-cd, so we don't emit another one. Triple
-                                        // cells are currently exported as normal arrows, so we add
-                                        // the correct tail for 1-cells.
-                                        parameters.tail = "";
-                                        break;
-                                }
-                                break;
-
-                            case "hook":
-                                parameters[`hook${
-                                    edge.options.style.tail.side === "top" ? "" : "'"
-                                }`] = "";
-                                if (edge.options.level > 1) {
-                                    tikz_incompatibilities.add(
-                                        "double arrows or higher with hook tails"
-                                    );
-                                }
-                                break;
-
-                            case "arrowhead":
-                                switch (edge.options.level) {
-                                    case 1:
-                                        parameters["tail reversed"] = "";
-                                        break;
-                                    case 2:
-                                        parameters["2tail reversed"] = "";
-                                        break;
-                                    default:
-                                        // We've already reported an issue with triple arrows and
-                                        // higher in tikz-cd, so we don't emit another one. Triple
-                                        // cells are currently exported as normal arrows, so we add
-                                        // the correct tail for 1-cells.
-                                        parameters["tail reversed"] = "";
-                                        break;
-                                }
-                                break;
-
-                            case "none":
-                                // This is the default in tikz-cd.
-                                break;
-                        }
-
-                        // Head styles.
-                        switch (edge.options.style.head.name) {
-                            case "none":
-                                parameters["no head"] = "";
-                                break;
-
-                            case "epi":
-                                parameters["two heads"] = "";
-                                if (edge.options.level > 1) {
-                                    tikz_incompatibilities.add(
-                                        "double arrows or higher with multiple heads"
-                                    );
-                                }
-                                break;
-
-                            case "harpoon":
-                                parameters[`harpoon${
-                                    edge.options.style.head.side === "top" ? "" : "'"
-                                }`] = "";
-                                if (edge.options.level > 1) {
-                                    tikz_incompatibilities.add(
-                                        "double arrows or higher with harpoon heads"
-                                    );
-                                }
-                                break;
-                        }
-
+                let marks = "";
+                switch (o.style.name) {
+                    case "arrow":
+                        marks = this.arrow(o)
                         break;
-
                     case "adjunction":
                     case "corner":
                     case "corner-inverse":
-                        labels.push(decoration);
-
-                        parameters.draw = "none";
-                        decoration.anchor = "center";
-
-                        let angle;
-
-                        switch (edge.options.style.name) {
-                            case "adjunction":
-                                decoration.content = "\\dashv";
-                                // Adjunction symbols should point in the direction of the arrow.
-                                angle = -Math.round(edge.angle() * 180 / Math.PI);
-                                break;
-                            case "corner":
-                            case "corner-inverse":
-                                decoration.content = edge.options.style.name.endsWith("-inverse") ?
-                                    "\\ulcorner" : "\\lrcorner";
-                                decoration.pos = "0.125";
-                                // Round the angle to the nearest 45º, so that the corner always
-                                // appears aligned with horizontal, vertical or diagonal lines.
-                                angle = 45 - 45 * Math.round(4 * edge.angle() / Math.PI);
-                                break;
-                        }
-
-                        if (angle !== 0) {
-                            decoration.rotate = angle;
-                        }
-
-                        break;
+                        // TODO: implement
+                        params["mark"] = `"->"`;
                 }
-
-                parameters.from = cell_reference(edge.source, !edge.options.edge_alignment.source);
-                parameters.to = cell_reference(edge.target, !edge.options.edge_alignment.target);
-
-                // Loops.
-                if (edge.target === edge.source) {
-                    parameters.loop = "";
-                    const clockwise = edge.options.radius >= 0 ? 1 : -1;
-                    const loop_angle = (180 - 90 * clockwise - edge.options.angle);
-                    const angle_spread = 30 + 5 * (Math.abs(edge.options.radius) - 1) / 2;
-                    parameters.in = mod(loop_angle - angle_spread * clockwise, 360);
-                    parameters.out = mod(loop_angle + angle_spread * clockwise, 360);
-                    parameters.distance = `${5 + 5 * (Math.abs(edge.options.radius) - 1) / 2}mm`;
-                }
-
-                const object_to_list = (object) => {
-                    return Object.entries(object).map(([key, value]) => {
-                        return value !== "" ? `${key}=${value}` : key;
-                    });
-                };
-
-                output += `\\arrow[${
-                    // Ignore any labels that are empty (and aren't playing an important role as a
-                    // placeholder).
-                    labels.filter((label) => label.hasOwnProperty("name") || label.content !== "")
-                        .map((label) => {
-                            const content = label.content || "";
-                            delete label.content;
-                            const swap = label.hasOwnProperty("swap");
-                            delete label.swap;
-                            const parameters = object_to_list(label);
-                            return `"${content !== "" ?
-                                format_label(content) : ""}"${swap ? "'" : ""}${
-                                parameters.length > 0 ? `{${parameters.join(", ")}}` : ""
-                            }`;
-                        })
-                        .concat(object_to_list(parameters))
-                        .join(", ")
-                }]\n`;
-
-                // Check whether any edges depend on this one, but are not edge aligned. In this
-                // case, we have to create a phantom edge that does not depend on the labels of the
-                // source and target.
-                if (quiver.dependencies_of(edge).size > 0) {
-                    for (const [dependency, end] of quiver.dependencies_of(edge)) {
-                        if (!dependency.options.edge_alignment[end]) {
-                            output += `\\arrow[""{name=${
-                                current_index
-                            }p, anchor=center, inner sep=0}, phantom, from=${
-                                parameters.from
-                            }, to=${
-                                parameters.to
-                            }, start anchor=center, end anchor=center${
-                                Object.keys(phantom_parameters).length > 0 ?
-                                    `, ${object_to_list(phantom_parameters).join(", ")}`
-                                : ""
-                            }]\n`;
-                        }
-                    }
-                }
+                const s = `(${source.position.x}, ${source.position.y})`;
+                const t = `(${target.position.x}, ${target.position.y})`;
+                const ps = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(", ");
+                output.push(`edge(${s}, ${t}, ${l}, ${marks}, ${ps})`);
             }
-            // Remove any trailing whitespace.
-            output = output.trim();
         }
 
         return {
-            data: wrap_boilerplate(output),
-            metadata: { tikz_incompatibilities, dependencies },
+            data: this.wrap_boilerplate(output, quiver, s, o, d),
+            metadata,
         };
     }
 
@@ -933,15 +520,11 @@ QuiverImportExport.base64 = new class extends QuiverImportExport {
     // - Arrays may be truncated if the values of the elements are the default values.
 
     export(quiver, _, options) {
-        // Remove the query string and fragment identifier from the current URL and use that as a
-        // base.
-        const URL_prefix = window.location.href.replace(/\?.*$/, "").replace(/#.*$/, "");
-
         if (quiver.is_empty()) {
             // No need to have an encoding of an empty quiver;
             // we'll just use the URL directly.
             return {
-                data: URL_prefix,
+                data: "",
                 metadata: {},
             };
         }
@@ -1057,15 +640,9 @@ QuiverImportExport.base64 = new class extends QuiverImportExport {
         const VERSION = 0;
         const output = [VERSION, quiver.cells[0].size, ...cells];
 
-        // Encode the macro URL if it's not null.
-        const macro_data = options.macro_url !== null
-            ? `&macro_url=${encodeURIComponent(options.macro_url)}` : "";
-
         const encoder = new TextEncoder();
         return {
-            data: `${URL_prefix}#q=${
-              btoa(String.fromCharCode(...encoder.encode(JSON.stringify(output))))
-            }${macro_data}`,
+            data: btoa(String.fromCharCode(...encoder.encode(JSON.stringify(output)))),
             metadata: {},
         };
     }
@@ -1302,7 +879,7 @@ QuiverImportExport.base64 = new class extends QuiverImportExport {
 };
 
 QuiverExport.html = new class extends QuiverExport {
-    export (quiver, settings, options, definitions) {
+    export(quiver, settings, options, definitions) {
         const url = QuiverImportExport.base64.export(quiver, settings, options, definitions).data;
         let [width, height] = settings.get("export.embed.fixed_size") ? [
             settings.get("export.embed.width"),

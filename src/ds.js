@@ -347,34 +347,14 @@ class Colour extends Encodable {
         return `hsla(${this.h}, ${this.s}%, ${this.l}%, ${this.a})`;
     }
 
-    /// Returns the LaTeX code corresponding to a HSL colour.
-    latex(latex_colours, parenthesise = false) {
-        // If the colour has a specific name in LaTeX (e.g. because it is predefined, or has been
-        // imported), use that.
-        let latex_name = null;
-        const name = Colour.colour_name(this.hsla());
-        if (["black", "red", "green", "blue", "white"].includes(name)) {
-            latex_name = name;
-        } else {
-            // We currently eagerly pick whichever LaTeX colour matches this one. This means that if
-            // there are multiple names for the same colour, we may not pick the correct one. It
-            // would be possible to correct this by saving colour names, rather than just colour
-            // values.
-            for (const [name, colour] of latex_colours) {
-                if (colour.eq(this)) {
-                    latex_name = name;
-                    break;
-                }
-            }
+    /// Returns the Typst code corresponding to a HSL colour.
+    typst() {
+        const [h, s, l, a] = this.hsla();
+        if(a==1){
+            return `color.hsl(${h}deg, ${s}%, ${l}%)`;
+        }else{
+            return `color.hsl(${h}deg, ${s}%, ${l}%, ${Math.round(a * 100)}%)`;
         }
-        if (latex_name !== null) {
-            return parenthesise ? `{${latex_name}}` : latex_name;
-        }
-
-        // Otherwise, fall back to a colour code.
-        // Alpha is currently not supported.
-        const [r, g, b, /* a */] = this.rgba();
-        return `{rgb,255:red,${r};green,${g};blue,${b}}`;
     }
 
     /// Returns whether two colours are equal, ignoring names.
