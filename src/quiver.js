@@ -454,11 +454,14 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                         // TODO: implement
                         params["mark"] = `"->"`;
                 }
-                const s = `(${source.position.x}, ${source.position.y})`;
-                const t = `(${target.position.x}, ${target.position.y})`;
-                const ps = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(", ");
-                const l = label===''?'':`${this.ltos(label, label_colour)}, `;
-                output.push(`edge(${s}, ${t}, ${l}${marks}, ${ps})`);
+                const args = [
+                    `(${source.position.x}, ${source.position.y})`,
+                    `(${target.position.x}, ${target.position.y})`,
+                    label === ''?'':this.ltos(label, label_colour),
+                    marks,
+                    ...Object.entries(params).map(([k, v]) => `${k}: ${v}`)
+                ]
+                output.push(`edge(${args.filter(Boolean).join(", ")})`);
             }
         }
 
