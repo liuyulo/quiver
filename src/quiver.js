@@ -374,6 +374,14 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
         return `"${arrow}"`;
     }
 
+    // label to string (with color)
+    ltos(label, c) {
+        if (label === "") return '" "';
+        label = `$${label}$`;
+        if (c.is_not_black()) return `text(fill: ${c.typst()}, ${label})`;
+        return label;
+    }
+
     // quiver, settings, options, definitions
     export(quiver, s, o, d) {
         let output = [];
@@ -385,18 +393,13 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                 data: this.wrap_boilerplate(output, quiver, s, o, d),
                 metadata,
             };
-        // label to string (with color)
-        const ltos = (label, c) => {
-            if (label === "") return '" "';
-            label = `$${label}$`;
-            if (c.is_not_black()) return `text(fill: ${c.typst()}, ${label})`;
-            return label;
-        }
 
+        // add nodes
         for (const { label, label_colour, position: { x, y } } of quiver.cells[0]) {
-            output.push(`node((${x}, ${y}), ${ltos(label, label_colour)})`);
+            output.push(`node((${x}, ${y}), ${this.ltos(label, label_colour)})`);
         }
 
+        // add edges
         for (let level = 1; level < quiver.cells.length; level++) {
             // TODO k-cells with k >= 2 is currently unsupported
             // See: https://github.com/Jollywatt/typst-fletcher/issues/16
@@ -407,7 +410,6 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                 const { source, target, options: o, label, label_colour } = edge;
                 console.assert(source.is_vertex() && target.is_vertex());
                 const params = {};
-                const l = ltos(label, label_colour);
                 if (label !== "") {
                     switch (o.label_alignment) {
                         case "centre":
@@ -455,7 +457,8 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                 const s = `(${source.position.x}, ${source.position.y})`;
                 const t = `(${target.position.x}, ${target.position.y})`;
                 const ps = Object.entries(params).map(([k, v]) => `${k}=${v}`).join(", ");
-                output.push(`edge(${s}, ${t}, ${l}, ${marks}, ${ps})`);
+                const l = label===''?'':`${this.ltos(label, label_colour)}, `;
+                output.push(`edge(${s}, ${t}, ${l}${marks}, ${ps})`);
             }
         }
 
