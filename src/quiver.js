@@ -383,27 +383,8 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
     }
 
     // edge params
-    params(label, o) {
+    params({ x: sx, y: sy }, { x: tx, y: ty }, label, o) {
         const params = {};
-        if (label !== "") {
-            console.log(o.label_alignment)
-            switch (o.label_alignment) {
-                case "centre":
-                    params["label-side"] = "center";
-                    params["label-fill"] = "true";
-                    break;
-                case "over":
-                    params["label-side"] = "center";
-                    params["label-fill"] = "false";
-                    break;
-                case "right":
-                    params["label-side"] = "right";
-                    break;
-            }
-            if (o.label_position !== 50) {
-                params["label-pos"] = o.label_position / 100;
-            }
-        }
 
         if (o.offset !== 0) {
             params["shift"] = `${o.offset}pt`;
@@ -416,6 +397,32 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
         if (o.curve !== 0) {
             // temporary
             params["bend"] = `${-15 * o.curve}deg`;
+        }
+        if (label === '') return params;
+
+        const slope = (ty - sy) / (tx - sx);
+        console.log(slope, o.label_alignment)
+        switch (o.label_alignment) {
+            case "centre":
+                params["label-side"] = "center";
+                params["label-fill"] = "true";
+                break;
+            case "over":
+                params["label-side"] = "center";
+                params["label-fill"] = "false";
+                break;
+            // label-side is above arrow by default
+            case "right":
+                if (slope >= 0)
+                    params["label-side"] = "right";
+                break;
+            case "left":
+                if (slope < 0)
+                    params["label-side"] = "left";
+        }
+
+        if (o.label_position !== 50) {
+            params["label-pos"] = o.label_position / 100;
         }
 
         return params;
@@ -459,8 +466,9 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
             }
             for (const edge of quiver.cells[level]) {
                 const { source, target, options: o, label, label_colour } = edge;
+                const [{ position: s }, { position: t }] = [source, target];
                 console.assert(source.is_vertex() && target.is_vertex());
-                const params = this.params(label, o);
+                const params = this.params(s, t, label, o);
                 const marks = this.marks(o);
                 const args = [
                     `(${source.position.x}, ${source.position.y})`,
