@@ -383,7 +383,7 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
     }
 
     // edge params
-    params(label, o){
+    params(label, o) {
         const params = {};
         if (label !== "") {
             console.log(o.label_alignment)
@@ -421,6 +421,18 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
         return params;
     }
 
+    // edge mark
+    marks(o) {
+        switch (o.style.name) {
+            case "arrow":
+                return this.arrow(o);
+            case "adjunction":
+            case "corner":
+            case "corner-inverse":
+                return `"->"`;
+        }
+    }
+
     // quiver, settings, options, definitions
     export(quiver, s, o, d) {
         let output = [];
@@ -449,21 +461,11 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                 const { source, target, options: o, label, label_colour } = edge;
                 console.assert(source.is_vertex() && target.is_vertex());
                 const params = this.params(label, o);
-                let marks = "";
-                switch (o.style.name) {
-                    case "arrow":
-                        marks = this.arrow(o)
-                        break;
-                    case "adjunction":
-                    case "corner":
-                    case "corner-inverse":
-                        // TODO: implement
-                        marks = `"->"`;
-                }
+                const marks = this.marks(o);
                 const args = [
                     `(${source.position.x}, ${source.position.y})`,
                     `(${target.position.x}, ${target.position.y})`,
-                    label === ''?'':this.ltos(label, label_colour),
+                    label === '' ? '' : this.ltos(label, label_colour),
                     marks,
                     ...Object.entries(params).map(([k, v]) => `${k}: ${v}`)
                 ]
