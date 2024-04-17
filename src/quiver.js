@@ -382,6 +382,45 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
         return label;
     }
 
+    // edge params
+    params(label, o){
+        const params = {};
+        if (label !== "") {
+            console.log(o.label_alignment)
+            switch (o.label_alignment) {
+                case "centre":
+                    params["label-side"] = "center";
+                    params["label-fill"] = "true";
+                    break;
+                case "over":
+                    params["label-side"] = "center";
+                    params["label-fill"] = "false";
+                    break;
+                case "right":
+                    params["label-side"] = "right";
+                    break;
+            }
+            if (o.label_position !== 50) {
+                params["label-pos"] = o.label_position / 100;
+            }
+        }
+
+        if (o.offset !== 0) {
+            params["shift"] = `${o.offset}pt`;
+        }
+
+        if (o.colour.is_not_black()) {
+            params["stroke"] = o.colour.typst();
+        }
+
+        if (o.curve !== 0) {
+            // temporary
+            params["bend"] = `${-15 * o.curve}deg`;
+        }
+
+        return params;
+    }
+
     // quiver, settings, options, definitions
     export(quiver, s, o, d) {
         let output = [];
@@ -409,40 +448,7 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
             for (const edge of quiver.cells[level]) {
                 const { source, target, options: o, label, label_colour } = edge;
                 console.assert(source.is_vertex() && target.is_vertex());
-                const params = {};
-                if (label !== "") {
-                    switch (o.label_alignment) {
-                        case "centre":
-                            params["label-side"] = "center";
-                            params["label-fill"] = "true";
-                            break;
-                        case "over":
-                            params["label-side"] = "center";
-                            params["label-fill"] = "false";
-                            break;
-                        case "right":
-                            params["label-side"] = "right";
-                            break;
-                    }
-
-                    if (o.label_position !== 50) {
-                        params["label-pos"] = o.label_position / 100;
-                    }
-                }
-
-                if (o.offset !== 0) {
-                    params["shift"] = `${o.offset}pt`;
-                }
-
-                if (o.colour.is_not_black()) {
-                    params["stroke"] = o.colour.typst();
-                }
-
-                if (o.curve !== 0) {
-                    // temporary
-                    params["bend"] = `${-15 * o.curve}deg`;
-                }
-
+                const params = this.params(label, o);
                 let marks = "";
                 switch (o.style.name) {
                     case "arrow":
@@ -452,7 +458,7 @@ QuiverImportExport.tikz_cd = new class extends QuiverImportExport {
                     case "corner":
                     case "corner-inverse":
                         // TODO: implement
-                        params["mark"] = `"->"`;
+                        marks = `"->"`;
                 }
                 const args = [
                     `(${source.position.x}, ${source.position.y})`,
